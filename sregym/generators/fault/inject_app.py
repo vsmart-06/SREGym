@@ -457,6 +457,12 @@ class ApplicationFaultInjector(FaultInjector):
 
         self.kubectl.patch_deployment(deployment_name, self.namespace, patch_body)
         print(f"Restored environment variable '{env_var}' with value '{env_value}' to deployment '{deployment_name}'.")
+    
+    def inject_kafka_producer_leak(self, service: str):
+        ...
+    
+    def recover_kafka_producer_leak(self, service: str):
+        ...
 
 
 if __name__ == "__main__":
