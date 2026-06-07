@@ -458,11 +458,86 @@ class ApplicationFaultInjector(FaultInjector):
         self.kubectl.patch_deployment(deployment_name, self.namespace, patch_body)
         print(f"Restored environment variable '{env_var}' with value '{env_value}' to deployment '{deployment_name}'.")
     
-    def inject_kafka_producer_leak(self, service: str):
-        ...
+    def inject_kafka_producer_leak(self, deployment_name: str = "checkout"):
+        kafka_dep = self.kubectl.get_deployment("kafka", self.namespace)
+        for c in kafka_dep.spec.template.spec.containers:
+            if "kafka" in c.name:
+                for i, e in enumerate(c.env):
+                    if e.name == "KAFKA_HEAP_OPTS":
+                        c.env[i].value = "-Xmx300M -Xms300M"
+
+                c.env.append(client.V1EnvVar(name="KAFKA_PRODUCER_ID_EXPIRATION_MS", value="3600000"))
+                break
+        
+        self.kubectl.update_deployment("kafka", self.namespace, kafka_dep)
+
+        deployment = self.kubectl.get_deployment(deployment_name, self.namespace)
+
+        script = textwrap.dedent(
+            """
+            from kafka import KafkaProducer
+            import threading
+
+            n = 10
+
+            def task(tid):
+                c = 0
+                while True:
+                    p = KafkaProducer(bootstrap_servers='kafka:9092')
+                    p.send('orders', b'order_created')
+                    c += 1
+                    if c % 100 == 0:
+                        print(f"Thread {tid} made {c} producers", flush=True)
+                
+            threads = []
+            for i in range(n):
+                t = threading.Thread(target=task, args=(i,))
+                t.start()
+                threads.append(t)
+            
+            for t in threads:
+                t.join()
+            """).strip()
+
+        encoded = base64.b64encode(script.encode()).decode()
+
+        container = client.V1Container(name="order-creator", image="python:3.12-slim", command=["sh", "-c", f"pip install kafka-python && python3 -c \"import base64; exec(base64.b64decode('{encoded}'))\""])
+
+        deployment.spec.template.spec.containers.append(container)
+
+        self.kubectl.update_deployment(deployment_name, self.namespace, deployment)
+
+        print(f"Injected sidecar container 'order-creator' in '{deployment_name}'")
     
-    def recover_kafka_producer_leak(self, service: str):
-        ...
+    def recover_kafka_producer_leak(self, deployment_name: str):
+        kafka_dep = self.kubectl.get_deployment("kafka", self.namespace)
+        for c in kafka_dep.spec.template.spec.containers:
+            if "kafka" in c.name:
+                flag = 0
+                temp = None
+                for i, e in enumerate(c.env):
+                    if e.name == "KAFKA_HEAP_OPTS":
+                        c.env[i].value = "-Xmx400M -Xms400M"
+                        flag += 1
+                    
+                    elif e.name == "KAFKA_PRODUCER_ID_EXPIRATION_MS":
+                        temp = i
+                        flag += 1
+
+                    if flag == 2:
+                        break
+                
+                c.env.pop(temp)
+        
+        self.kubectl.update_deployment("kafka", self.namespace, kafka_dep)
+
+        deployment = self.kubectl.get_deployment(deployment_name, self.namespace)
+
+        deployment.spec.template.spec.containers = [x for x in deployment.spec.template.spec.containers if x.name != "order-creator"]
+
+        self.kubectl.update_deployment(deployment_name, self.namespace, deployment)
+
+        print(f"Removed sidecar container 'order-creator' from '{deployment_name}'")
 
 
 if __name__ == "__main__":

@@ -2,6 +2,7 @@ from sregym.conductor.oracles.llm_as_a_judge.llm_as_a_judge_oracle import LLMAsA
 from sregym.conductor.problems.base import Problem
 from sregym.generators.fault.inject_app import ApplicationFaultInjector
 from sregym.service.apps.astronomy_shop import AstronomyShop
+from sregym.conductor.oracles.kafka_producer_leak_mitigation import KafkaProducerLeakOracle
 from sregym.service.kubectl import KubeCtl
 from sregym.utils.decorators import mark_fault_injected
 
@@ -28,7 +29,7 @@ class KafkaProducerLeak(Problem):
         )
         self.diagnosis_oracle = LLMAsAJudgeOracle(problem=self, expected=self.root_cause)
 
-        # self.mitigation_oracle = MitigationOracle(problem=self)
+        self.mitigation_oracle = KafkaProducerLeakOracle(problem=self)
 
     @mark_fault_injected
     def inject_fault(self):
