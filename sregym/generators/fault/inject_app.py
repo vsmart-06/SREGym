@@ -483,7 +483,7 @@ class ApplicationFaultInjector(FaultInjector):
             def task(tid):
                 c = 0
                 while True:
-                    p = KafkaProducer(bootstrap_servers='kafka:9092')
+                    p = KafkaProducer(bootstrap_servers='kafka:9092', enable_idempotence=True)
                     p.send('orders', b'order_created')
                     c += 1
                     if c % 100 == 0:
