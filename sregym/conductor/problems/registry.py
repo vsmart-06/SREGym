@@ -15,6 +15,9 @@ from sregym.conductor.problems.configmap_drift import ConfigMapDrift
 from sregym.conductor.problems.cronjob_sidecar_blocks_completion import (
     CronJobSidecarBlocksCompletionHotelReservation,
 )
+from sregym.conductor.problems.cumulative_admission_webhook_timeout_hotel_reservation import (
+    CumulativeAdmissionWebhookTimeoutHotelReservation,
+)
 from sregym.conductor.problems.dev_shm_exhaustion_hotel_reservation import DevShmExhaustionHotelReservation
 from sregym.conductor.problems.duplicate_pvc_mounts import DuplicatePVCMounts
 from sregym.conductor.problems.edge_request_filter_cpu_saturation import EdgeRequestFilterCPUSaturation
@@ -283,6 +286,7 @@ class ProblemRegistry:
 
             "admission_webhook_tls_mismatch_hotel_reservation": lambda: AdmissionWebhookTLSMismatch(app_name="hotel_reservation", faulty_service="recommendation"),
             "mutating_webhook_resource_limits_social_network": MutatingWebhookResourceLimits,
+            "cumulative_admission_webhook_timeout_hotel_reservation": CumulativeAdmissionWebhookTimeoutHotelReservation,
             "cronjob_sidecar_blocks_completion_hotel_reservation": CronJobSidecarBlocksCompletionHotelReservation,
             # ==================== MULTIPLE INDEPENDENT FAILURES ====================
             # "port_misconfig_revoke_auth_wrong_svc_selector": \
