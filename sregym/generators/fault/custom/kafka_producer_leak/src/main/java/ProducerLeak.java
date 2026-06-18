@@ -19,7 +19,7 @@ public class ProducerLeak {
             int threadId = i;
             Thread t = new Thread(() -> runLoop(threadId));
             t.start();
-            threads.add(t)
+            threads.add(t);
         }
 
         for (Thread t : threads) {
