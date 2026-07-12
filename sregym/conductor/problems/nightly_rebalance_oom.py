@@ -204,7 +204,7 @@ class NightlyRebalanceOOM(Problem):
             if cron_gone and not jobs and not pods:
                 return
             time.sleep(3)
-        print(f"⚠️ Actor {self.actor_namespace}/{self.actor_name} not fully gone after {timeout}s; restoring anyway")
+        print(f"Actor {self.actor_namespace}/{self.actor_name} not fully gone after {timeout}s; restoring anyway")
 
     @classmethod
     def cleanup_leftover_actor(cls):
