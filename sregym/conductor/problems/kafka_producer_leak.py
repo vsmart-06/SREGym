@@ -9,7 +9,7 @@ from sregym.utils.decorators import mark_fault_injected
 
 class KafkaProducerLeak(Problem):
     """
-    Problem that injects a sidecar container that creates lots of Kafka producers without reuse filling up memory in the broker
+    Problem that injects a sidecar container that floods the Kafka broker with large concurrent messages, exhausting broker heap memory
     """
 
     def __init__(self):
@@ -25,7 +25,7 @@ class KafkaProducerLeak(Problem):
         self.root_cause = self.build_structured_root_cause(
             component=f"deployment/{self.faulty_service}",
             namespace=f"{self.namespace}",
-            description=f"The {self.faulty_service} deployment has a sidecar container that creates Kafka producers continuously and indefinitely and the Kafka broker exhausts it's memory keeping track of the metadata of all the producers"
+            description=f"The {self.faulty_service} deployment has a sidecar container that continuously sends large messages to the Kafka broker concurrently, causing the broker to exhaust its heap memory through network receive buffer allocation pressure"
         )
         self.diagnosis_oracle = LLMAsAJudgeOracle(problem=self, expected=self.root_cause)
 
