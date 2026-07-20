@@ -9,6 +9,8 @@ from kubernetes import client
 from sregym.generators.fault.base import FaultInjector
 from sregym.service.kubectl import KubeCtl
 
+FEATURE_FLAG_EXPERIMENTAL_ROUTING_IMAGE = "ghcr.io/sregym/hotel-reservation:latest"
+
 
 class ApplicationFaultInjector(FaultInjector):
     def __init__(self, namespace: str):
@@ -474,6 +476,91 @@ class ApplicationFaultInjector(FaultInjector):
 
         self.kubectl.patch_deployment(deployment_name, self.namespace, patch_body)
         print(f"Restored environment variable '{env_var}' with value '{env_value}' to deployment '{deployment_name}'.")
+
+    # A.7 feature_flag_experimental_routing: swap frontend image + set flag to activate dormant error path
+    def inject_feature_flag_experimental_routing(
+        self,
+        deployment_name: str = "frontend",
+        configmap_name: str = "frontend-runtime-config",
+        flag_key: str = "SEARCH_BACKEND_VERSION",
+        experimental_image: str = FEATURE_FLAG_EXPERIMENTAL_ROUTING_IMAGE,
+    ):
+        """Set the feature flag in a ConfigMap and swap the frontend image to the
+        experimental-routing build. When the flag is active, the frontend's search
+        handler returns HTTP 500 on every hotel search request while all pods
+        remain Running."""
+
+        self.kubectl.create_or_update_configmap(
+            name=configmap_name,
+            namespace=self.namespace,
+            data={flag_key: "true"},
+        )
+        print(f"ConfigMap {configmap_name} set: {flag_key}=true")
+
+        deployment = self.kubectl.get_deployment(deployment_name, self.namespace)
+        for container in deployment.spec.template.spec.containers:
+            if container.name == f"hotel-reserv-{deployment_name}":
+                container.image = experimental_image
+                if not container.env:
+                    container.env = []
+                container.env = [e for e in container.env if e.name != flag_key]
+                container.env.append(
+                    client.V1EnvVar(
+                        name=flag_key,
+                        value_from=client.V1EnvVarSource(
+                            config_map_key_ref=client.V1ConfigMapKeySelector(
+                                name=configmap_name,
+                                key=flag_key,
+                            )
+                        ),
+                    )
+                )
+        deployment.spec.strategy = client.V1DeploymentStrategy(type="Recreate")
+        self.kubectl.update_deployment(deployment_name, self.namespace, deployment)
+        print(f"Swapped {deployment_name} image to {experimental_image} and set {flag_key}=true env")
+        # Wait for rollout to complete so fault is deterministically live before returning
+        self.kubectl.exec_command(
+            f"kubectl rollout status deployment/{deployment_name} -n {self.namespace} --timeout=120s"
+        )
+        time.sleep(5)
+
+    def recover_feature_flag_experimental_routing(
+        self,
+        deployment_name: str = "frontend",
+        configmap_name: str = "frontend-runtime-config",
+        flag_key: str = "SEARCH_BACKEND_VERSION",
+        original_image: str | None = None,
+    ):
+        """Revert the flag and restore the original frontend image."""
+
+        self.kubectl.create_or_update_configmap(
+            name=configmap_name,
+            namespace=self.namespace,
+            data={flag_key: "false"},
+        )
+        print(f"ConfigMap {configmap_name} reverted: {flag_key}=false")
+
+        if original_image is None:
+            raise ValueError("original_image must be provided")
+
+        deployment = self.kubectl.get_deployment(deployment_name, self.namespace)
+        for container in deployment.spec.template.spec.containers:
+            if container.name == f"hotel-reserv-{deployment_name}":
+                container.image = original_image
+
+        deployment.spec.strategy = client.V1DeploymentStrategy(
+            type="RollingUpdate",
+            rolling_update=client.V1RollingUpdateDeployment(
+                max_unavailable="25%",
+                max_surge="25%",
+            ),
+        )
+        self.kubectl.update_deployment(deployment_name, self.namespace, deployment)
+        print(f"Restored {deployment_name} image to {original_image} and set {flag_key}=false env")
+        self.kubectl.exec_command(
+            f"kubectl rollout status deployment/{deployment_name} -n {self.namespace} --timeout=120s"
+        )
+        time.sleep(5)
 
 
 if __name__ == "__main__":
