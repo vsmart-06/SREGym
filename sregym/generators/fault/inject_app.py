@@ -538,7 +538,23 @@ class ApplicationFaultInjector(FaultInjector):
 
         self.kubectl.update_deployment(deployment_name, self.namespace, deployment)
 
-        time.sleep(90)
+        pods = self.kubectl.list_pods(self.namespace)
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
+            pods = self.kubectl.list_pods(self.namespace)
+            rcnt = None
+            for p in pods.items:
+                if "kafka" in p.metadata.name:
+                    for c in (p.status.container_statuses or []):
+                        if "kafka" in c.name:
+                            rcnt = c.restart_count
+                            break
+                    break
+
+            if rcnt:
+                break
+
+            time.sleep(5)
 
         print(f"Injected sidecar container 'order-creator' in '{deployment_name}'")
 

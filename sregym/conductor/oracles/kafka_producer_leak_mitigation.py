@@ -4,7 +4,7 @@ import time
 
 class KafkaProducerLeakOracle(MitigationOracle):
     def evaluate(self) -> dict:
-        self.rollout_time = 120 # Might need to be increased to 300 in case a mitigation was successful but some pods were stuck in CrashLoopBackOff
+        self.rollout_time = 300
 
         results = super().evaluate()
 
@@ -48,20 +48,22 @@ class KafkaProducerLeakOracle(MitigationOracle):
                             break
                     break
 
-            time.sleep(120)
+            deadline = time.monotonic() + 120
+            while time.monotonic() < deadline:
+                pods = kubectl.list_pods(self.problem.namespace)
+                rcnt_2 = None
+                for p in pods.items:
+                    if "kafka" in p.metadata.name:
+                        for c in p.status.container_statuses:
+                            if "kafka" in c.name:
+                                rcnt_2 = c.restart_count
+                                break
+                        break
 
-            pods = kubectl.list_pods(self.problem.namespace)
-            rcnt_2 = None
-            for p in pods.items:
-                if "kafka" in p.metadata.name:
-                    for c in p.status.container_statuses:
-                        if "kafka" in c.name:
-                            rcnt_2 = c.restart_count
-                            break
-                    break
+                if rcnt_1 is None or rcnt_2 is None or rcnt_2 > rcnt_1:
+                    results["success"] = False
+                    return results
 
-            if rcnt_1 is None or rcnt_2 is None or rcnt_2 > rcnt_1:
-                results["success"] = False
-                return results
+                time.sleep(5)
 
         return results
