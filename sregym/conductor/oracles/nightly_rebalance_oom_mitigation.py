@@ -65,13 +65,20 @@ class NightlyRebalanceOOMMitigationOracle(MitigationOracle):
         label = f"app={self.problem.actor_name}"
         baseline = {j.metadata.name for j in batch.list_namespaced_job(actor_ns, label_selector=label).items}
         deadline = time.monotonic() + timeout
+        saw_tick = False
         while time.monotonic() < deadline:
-            fresh = [j for j in batch.list_namespaced_job(actor_ns, label_selector=label).items
-                     if j.metadata.name not in baseline]
+            fresh = [
+                j
+                for j in batch.list_namespaced_job(actor_ns, label_selector=label).items
+                if j.metadata.name not in baseline
+            ]
             if any((j.status.succeeded or 0) or (j.status.failed or 0) for j in fresh):
+                saw_tick = True
                 break
             time.sleep(poll)
-        return self._memory_limit_sane(service, namespace) and self._target_pods_healthy(service, namespace)
+        return (
+            saw_tick and self._memory_limit_sane(service, namespace) and self._target_pods_healthy(service, namespace)
+        )
 
     def _memory_limit_sane(self, service: str, namespace: str) -> bool:
         original = getattr(self.problem, "_original_memory_limit", None)
